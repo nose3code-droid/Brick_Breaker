@@ -191,14 +191,16 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     W: { color: '#38b6ff', name: 'ワイド' },
     M: { color: '#ffd23f', name: 'マルチ' },
     S: { color: '#3ddc97', name: 'スロー' },
+    P: { color: '#ff5a4e', name: 'かんつう' },
     L: { color: '#ff6fb5', name: '1UP' },
   };
-  const POWER_KEYS = ['W', 'W', 'M', 'M', 'S', 'S', 'L'];
+  const POWER_KEYS = ['W', 'W', 'M', 'M', 'S', 'S', 'P', 'L'];
+  const TIMER_MAX = { W: 12, S: 10, P: 8 }; // 時間制アイテムの効果時間 (秒)
 
   let state = 'title', prevState = 'play';
   let score = 0, lives = 3, level = 0, combo = 0, hi = loadHi();
   let bricks = [], balls = [], caps = [], parts = [];
-  let wideT = 0, slowT = 0, shake = 0, clearT = 0, time = 0;
+  let wideT = 0, slowT = 0, pierceT = 0, shake = 0, clearT = 0, time = 0;
   // 開発者用オートモード: z を5回連続で押すと ON/OFF
   let auto = false, autoT = 0, zCount = 0, zLast = 0;
   const paddle = { x: W / 2, y: H - 46, w: 84, h: 12, target: null };
@@ -270,7 +272,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   }
   function startGame() {
     score = 0; lives = 3; level = 0;
-    caps = []; parts = []; wideT = slowT = 0;
+    caps = []; parts = []; wideT = slowT = pierceT = 0;
     paddle.x = W / 2;
     buildLevel(0);
     serveBall();
@@ -289,7 +291,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     lives--;
     sfx.lose();
     shake = 0.35;
-    caps = []; wideT = slowT = 0;
+    caps = []; wideT = slowT = pierceT = 0;
     if (lives <= 0) { state = 'over'; saveHi(); }
     else serveBall();
   }
@@ -347,6 +349,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       const cx = clamp(b.x, k.x, k.x + k.w), cy = clamp(b.y, k.y, k.y + k.h);
       const ddx = b.x - cx, ddy = b.y - cy;
       if (ddx * ddx + ddy * ddy > b.r * b.r) continue;
+      if (pierceT > 0 && !k.hard) {
+        // かんつう中: 耐久に関係なく一撃で壊し、跳ね返らずに突き抜ける
+        k.hp = 1;
+        hitBrick(k, i);
+        i--;
+        continue;
+      }
       const ox = Math.min(b.x + b.r - k.x, k.x + k.w - (b.x - b.r));
       const oy = Math.min(b.y + b.r - k.y, k.y + k.h - (b.y - b.r));
       if (ox < oy) b.dx = b.x < k.x + k.w / 2 ? -Math.abs(b.dx) : Math.abs(b.dx);
@@ -382,8 +391,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   function applyPower(type) {
     sfx.power();
     score += 50;
-    if (type === 'W') wideT = 12;
-    else if (type === 'S') slowT = 10;
+    if (type === 'W') wideT = TIMER_MAX.W;
+    else if (type === 'S') slowT = TIMER_MAX.S;
+    else if (type === 'P') pierceT = TIMER_MAX.P;
     else if (type === 'L') lives = Math.min(lives + 1, 9);
     else if (type === 'M') {
       const extra = [];
@@ -443,13 +453,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     if (state === 'clear') {
       clearT -= dt;
-      if (clearT <= 0) { level++; buildLevel(level); paddle.x = W / 2; wideT = slowT = 0; serveBall(); }
+      if (clearT <= 0) { level++; buildLevel(level); paddle.x = W / 2; wideT = slowT = pierceT = 0; serveBall(); }
       return;
     }
     if (state !== 'play' && state !== 'serve') return;
 
     wideT = Math.max(0, wideT - dt);
     slowT = Math.max(0, slowT - dt);
+    pierceT = Math.max(0, pierceT - dt);
     const baseW = difficulty(level).paddle;
     const targetW = wideT > 0 ? baseW + 44 : baseW;
     paddle.w += (targetW - paddle.w) * Math.min(1, dt * 10);
@@ -545,9 +556,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   function drawBalls() {
     ctx.save();
-    ctx.shadowColor = slowT > 0 ? '#3ddc97' : '#ffffff';
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = '#ffffff';
+    // かんつう中は赤く光る。残り2秒で点滅して終わりを知らせる
+    const pierce = pierceT > 0 && (pierceT > 2 || Math.floor(time * 8) % 2 === 0);
+    ctx.shadowColor = pierce ? POWERS.P.color : slowT > 0 ? '#3ddc97' : '#ffffff';
+    ctx.shadowBlur = pierce ? 20 : 12;
+    ctx.fillStyle = pierce ? '#ffb3ad' : '#ffffff';
     for (const b of balls) { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); }
     ctx.restore();
   }
@@ -574,14 +587,19 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   function drawTimers() {
     const items = [];
-    if (wideT > 0) items.push(['ワイド', wideT, POWERS.W.color]);
-    if (slowT > 0) items.push(['スロー', slowT, POWERS.S.color]);
+    if (wideT > 0) items.push(['W', wideT]);
+    if (slowT > 0) items.push(['S', slowT]);
+    if (pierceT > 0) items.push(['P', pierceT]);
     ctx.font = `13px ${FONT}`;
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    items.forEach(([name, t, color], i) => {
-      const y = H - 16, x = 12 + i * 110;
-      ctx.fillStyle = color;
-      ctx.fillText(`${name} ${Math.ceil(t)}`, x, y);
+    items.forEach(([key, t], i) => {
+      const x = 12 + i * 152, y = H - 20, barW = 140;
+      ctx.fillStyle = POWERS[key].color;
+      ctx.fillText(`${POWERS[key].name} ${Math.ceil(t)}秒`, x, y);
+      ctx.fillStyle = 'rgba(239,234,255,0.15)';
+      ctx.fillRect(x, y + 9, barW, 3);
+      ctx.fillStyle = POWERS[key].color;
+      ctx.fillRect(x, y + 9, barW * (t / TIMER_MAX[key]), 3);
     });
   }
 
