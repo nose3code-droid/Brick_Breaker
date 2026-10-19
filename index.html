@@ -277,8 +277,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         if (ch === '.') return;
         const hard = ch === '#';
         const hp = hard ? Infinity : Math.min(5, +ch + bonus);
+        // 端の列のこわれないブロックは画面の端までのばす。
+        // 端と画面のすき間(16px)がボール(直径14px)より広く、すり抜けてしまうため
+        let x = SIDE + c * (BW + GAP), w = BW;
+        if (hard && c === 0) { x = 0; w += SIDE; }
+        if (hard && c === COLS - 1) w += SIDE;
         bricks.push({
-          x: SIDE + c * (BW + GAP), y: TOP + r * (BH + GAP), w: BW, h: BH,
+          x, y: TOP + r * (BH + GAP), w, h: BH,
           hp, max: hp, hard, flash: 0,
           color: hard ? HARD_COLOR : ROW_COLORS[r % ROW_COLORS.length],
         });
@@ -379,10 +384,30 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         i--;
         continue;
       }
-      const ox = Math.min(b.x + b.r - k.x, k.x + k.w - (b.x - b.r));
-      const oy = Math.min(b.y + b.r - k.y, k.y + k.h - (b.y - b.r));
-      if (ox < oy) b.dx = b.x < k.x + k.w / 2 ? -Math.abs(b.dx) : Math.abs(b.dx);
-      else b.dy = b.y < k.y + k.h / 2 ? -Math.abs(b.dy) : Math.abs(b.dy);
+      // 1ステップ前の位置から、どの面に当たったかを決める。
+      // めり込んだ深さだけで決めると、ブロックの継ぎ目や角で向きを誤り、ボールが中へ入りこんでしまう
+      const px = b.x - b.dx * s, py = b.y - b.dy * s;
+      const fromAbove = py + b.r <= k.y, fromBelow = py - b.r >= k.y + k.h;
+      const fromLeft = px + b.r <= k.x, fromRight = px - b.r >= k.x + k.w;
+      let vertical;
+      if ((fromAbove || fromBelow) && !(fromLeft || fromRight)) vertical = true;
+      else if ((fromLeft || fromRight) && !(fromAbove || fromBelow)) vertical = false;
+      else {
+        const ox = Math.min(b.x + b.r - k.x, k.x + k.w - (b.x - b.r));
+        const oy = Math.min(b.y + b.r - k.y, k.y + k.h - (b.y - b.r));
+        vertical = oy <= ox;
+      }
+      // 向きを変えたうえで、ブロックの外へ押し出す
+      if (vertical) {
+        const up = fromAbove || (!fromBelow && b.y < k.y + k.h / 2);
+        b.dy = up ? -Math.abs(b.dy) : Math.abs(b.dy);
+        b.y = up ? k.y - b.r : k.y + k.h + b.r;
+      } else {
+        // 画面の端までのびたブロックは、壁の外ではなく内側へ押し出す
+        const left = k.x + k.w >= W || (k.x > 0 && (fromLeft || (!fromRight && b.x < k.x + k.w / 2)));
+        b.dx = left ? -Math.abs(b.dx) : Math.abs(b.dx);
+        b.x = left ? k.x - b.r : k.x + k.w + b.r;
+      }
       normalize(b);
       hitBrick(k, i);
       break;
