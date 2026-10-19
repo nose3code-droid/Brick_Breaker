@@ -174,6 +174,28 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     { name: 'おり', map: ['##########', '#44444444#', '#4##..##4#', '#4.3333.4#', '#4.3333.4#', '#4......4#', '#4#....#4#', '#........#', '###....###'] },
     { name: 'インベーダー', map: ['..3....3..', '...3..3...', '..444444..', '.44#44#44.', '4444444444', '4.444444.4', '4.4....4.4', '...44.44..', '3333333333'] },
     { name: 'めいろ', map: ['4444444444', '4444444444', '###.##.###', '3333333333', '3333333333', '.###..###.', '2222222222', '2222222222', '##.####.##'] },
+    // 画面の大半をしめる迷路。こわれないかべの通路が左右交互につながり、出入口は床の中央2マスだけ。
+    // 中に入ったボールは通路をぐるぐる回り、なかなか落ちてこない
+    { name: 'ラビリンス', map: [
+      '4444444444',
+      '..........',
+      '########..',
+      '3.3.3.3.3.',
+      '..........',
+      '..########',
+      '.2.2.2.2.2',
+      '..........',
+      '########..',
+      '3.3.3.3.3.',
+      '..........',
+      '..########',
+      '.2.2.2.2.2',
+      '..........',
+      '########..',
+      '1.1.1.1.1.',
+      '..........',
+      '####..####',
+    ] },
     { name: 'さいごのとりで', map: ['4444444444', '4#4#44#4#4', '4444444444', '3#3#33#3#3', '3333333333', '#.#.##.#.#', '2222222222', '2222222222', '#..#..#..#', '1111111111'] },
   ];
   // ステージごとの難易度。全ステージをクリアすると2周目以降はさらに速く、かたくなる
@@ -202,7 +224,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   let bricks = [], balls = [], caps = [], parts = [];
   let wideT = 0, slowT = 0, pierceT = 0, shake = 0, clearT = 0, time = 0;
   // 開発者用オートモード: z を5回連続で押すと ON/OFF
-  let auto = false, autoT = 0, zCount = 0, zLast = 0;
+  let auto = false, autoT = 0, zCount = 0, zLast = 0, autoJitter = 0;
   const paddle = { x: W / 2, y: H - 46, w: 84, h: 12, target: null };
   const keys = { left: false, right: false };
 
@@ -341,6 +363,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       b.sp = Math.min(b.sp * 1.012, baseSpeed() * 1.35);
       combo = 0;
       sfx.paddle();
+      autoJitter = Math.random() * 0.8 - 0.4; // オート時、同じ軌道の往復にはまらないよう毎回ねらいをずらす
       return;
     }
 
@@ -436,7 +459,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     // 残っているブロックの中心へ向かうようにパドルの当てる位置をずらす
     const live = bricks.filter(k => !k.hard);
     const cx = live.length ? live.reduce((s, k) => s + k.x + k.w / 2, 0) / live.length : W / 2;
-    const rel = clamp((cx - landX) / (W / 2), -0.6, 0.6);
+    const rel = clamp((cx - landX) / (W / 2) + autoJitter, -0.7, 0.7);
     return landX - rel * (paddle.w / 2) * 0.8;
   }
 
@@ -639,6 +662,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     else if (state === 'serve') {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = '#efeaff'; ctx.font = `16px ${FONT}`;
+      ctx.fillStyle = 'rgba(15,13,34,0.75)';
+      ctx.fillRect(0, H / 2 + 30, W, 70);
       ctx.fillStyle = '#ffd23f'; ctx.font = `22px ${FONT}`;
       ctx.fillText(`STAGE ${level + 1}「${LEVELS[level % LEVELS.length].name}」`, W / 2, H / 2 + 50);
       ctx.fillStyle = '#efeaff'; ctx.font = `16px ${FONT}`;
