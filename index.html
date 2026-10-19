@@ -157,14 +157,36 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   const BW = (W - SIDE * 2 - GAP * (COLS - 1)) / COLS;
   const ROW_COLORS = ['#ff5a4e', '#ff9f43', '#ffd23f', '#3ddc97', '#38b6ff', '#a28bff', '#ff6fb5', '#ff9f43'];
   const HARD_COLOR = '#59607a';
-  // '.' = 空き, '1'〜'3' = 耐久, '#' = こわれないブロック
+  // '.' = 空き, '1'〜'4' = 耐久, '#' = こわれないブロック
+  // 後のステージほど段数・耐久・こわれないブロックが増える
   const LEVELS = [
-    ['1111111111', '1111111111', '2222222222', '1111111111', '1111111111'],
-    ['....33....', '...2222...', '..111111..', '.22222222.', '1111111111', '1111111111'],
-    ['3.3.3.3.3.', '.2.2.2.2.2', '1111111111', '#..####..#', '2222222222', '1111111111'],
-    ['3333333333', '3........3', '3.222222.3', '3.2####2.3', '3.222222.3', '3........3', '1111111111'],
-    ['..111111..', '.12222221.', '1223223221', '1222222221', '12#2222#21', '.12####21.', '..111111..'],
+    { name: 'はじまり', map: ['1111111111', '1111111111', '1111111111', '1111111111'] },
+    { name: 'しましま', map: ['1111111111', '1111111111', '2222222222', '1111111111', '1111111111'] },
+    { name: 'ピラミッド', map: ['....33....', '...2222...', '..111111..', '.22222222.', '1111111111', '1111111111'] },
+    { name: 'チェッカー', map: ['2121212121', '1212121212', '2121212121', '1212121212', '1111111111', '1111111111'] },
+    { name: 'かべ', map: ['3.3.3.3.3.', '.2.2.2.2.2', '1111111111', '#..####..#', '2222222222', '1111111111'] },
+    { name: 'ダイヤ', map: ['....22....', '...2332...', '..233332..', '.23333332.', '..233332..', '...2332...', '....22....', '1111111111'] },
+    { name: 'とりで', map: ['3333333333', '3........3', '3.222222.3', '3.2####2.3', '3.222222.3', '3........3', '1111111111'] },
+    { name: 'はしら', map: ['3.3.33.3.3', '2.2.22.2.2', '2.2.22.2.2', '2#2.22.2#2', '1111111111', '1111111111', '..######..'] },
+    { name: 'スマイル', map: ['..111111..', '.12222221.', '1223223221', '1222222221', '12#2222#21', '.12####21.', '..111111..', '2222222222'] },
+    { name: 'ジグザグ', map: ['3333......', '.3333.....', '..3333....', '...3333...', '....3333..', '.....3333.', '......3333', '2222222222', '##..##..##'] },
+    { name: 'かたいかべ', map: ['4343434343', '3434343434', '#..#..#..#', '2222222222', '3333333333', '#.#.##.#.#', '2222222222'] },
+    { name: 'おり', map: ['##########', '#44444444#', '#4##..##4#', '#4.3333.4#', '#4.3333.4#', '#4......4#', '#4#....#4#', '#........#', '###....###'] },
+    { name: 'インベーダー', map: ['..3....3..', '...3..3...', '..444444..', '.44#44#44.', '4444444444', '4.444444.4', '4.4....4.4', '...44.44..', '3333333333'] },
+    { name: 'めいろ', map: ['4444444444', '4444444444', '###.##.###', '3333333333', '3333333333', '.###..###.', '2222222222', '2222222222', '##.####.##'] },
+    { name: 'さいごのとりで', map: ['4444444444', '4#4#44#4#4', '4444444444', '3#3#33#3#3', '3333333333', '#.#.##.#.#', '2222222222', '2222222222', '#..#..#..#', '1111111111'] },
   ];
+  // ステージごとの難易度。全ステージをクリアすると2周目以降はさらに速く、かたくなる
+  function difficulty(lv) {
+    const t = Math.min(lv, LEVELS.length - 1) / (LEVELS.length - 1);
+    const loop = Math.min(3, Math.floor(lv / LEVELS.length));
+    return {
+      speed: 290 + 200 * t + 40 * loop,   // ボールの初速 (px/秒)
+      paddle: Math.round(96 - 26 * t),    // パドルの幅
+      drop: 0.16 - 0.08 * t,              // アイテムが出る確率
+      hpBonus: loop,                      // 周回ごとにブロックの耐久 +1
+    };
+  }
   const POWERS = {
     W: { color: '#38b6ff', name: 'ワイド' },
     M: { color: '#ffd23f', name: 'マルチ' },
@@ -225,11 +247,12 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   // ---------- ゲーム進行 ----------
   function buildLevel(i) {
     bricks = [];
-    LEVELS[i % LEVELS.length].forEach((row, r) => {
+    const bonus = difficulty(i).hpBonus;
+    LEVELS[i % LEVELS.length].map.forEach((row, r) => {
       [...row].forEach((ch, c) => {
         if (ch === '.') return;
         const hard = ch === '#';
-        const hp = hard ? Infinity : +ch;
+        const hp = hard ? Infinity : Math.min(5, +ch + bonus);
         bricks.push({
           x: SIDE + c * (BW + GAP), y: TOP + r * (BH + GAP), w: BW, h: BH,
           hp, max: hp, hard, flash: 0,
@@ -238,7 +261,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       });
     });
   }
-  const baseSpeed = () => 330 * (1 + 0.07 * Math.min(level, 10));
+  const baseSpeed = () => difficulty(level).speed;
 
   function serveBall() {
     balls = [{ x: paddle.x, y: paddle.y - 14, dx: 0, dy: -1, sp: baseSpeed(), r: 7, stuck: true }];
@@ -313,7 +336,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       const a = rel * 1.05; // 最大およそ60度
       b.dx = Math.sin(a); b.dy = -Math.cos(a);
       b.y = top - b.r;
-      b.sp = Math.min(b.sp * 1.012, baseSpeed() * 1.45);
+      b.sp = Math.min(b.sp * 1.012, baseSpeed() * 1.35);
       combo = 0;
       sfx.paddle();
       return;
@@ -344,7 +367,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     score += k.max * 10 + (combo - 1) * 5;
     sfx.brk(combo);
     burst(k.x + k.w / 2, k.y + k.h / 2, k.color);
-    if (Math.random() < 0.13) {
+    if (Math.random() < difficulty(level).drop) {
       caps.push({ x: k.x + k.w / 2, y: k.y + k.h / 2, type: POWER_KEYS[(Math.random() * POWER_KEYS.length) | 0] });
     }
   }
@@ -427,7 +450,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     wideT = Math.max(0, wideT - dt);
     slowT = Math.max(0, slowT - dt);
-    const targetW = wideT > 0 ? 128 : 84;
+    const baseW = difficulty(level).paddle;
+    const targetW = wideT > 0 ? baseW + 44 : baseW;
     paddle.w += (targetW - paddle.w) * Math.min(1, dt * 10);
     const mv = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
     if (auto) { const d = autoTarget() - paddle.x; paddle.x += clamp(d, -1400 * dt, 1400 * dt); }
@@ -597,10 +621,18 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     else if (state === 'serve') {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillStyle = '#efeaff'; ctx.font = `16px ${FONT}`;
-      if (blink) ctx.fillText(`STAGE ${level + 1}　クリックで発射`, W / 2, H / 2 + 60);
+      ctx.fillStyle = '#ffd23f'; ctx.font = `22px ${FONT}`;
+      ctx.fillText(`STAGE ${level + 1}「${LEVELS[level % LEVELS.length].name}」`, W / 2, H / 2 + 50);
+      ctx.fillStyle = '#efeaff'; ctx.font = `16px ${FONT}`;
+      if (blink) ctx.fillText('クリックで発射', W / 2, H / 2 + 82);
     }
     else if (state === 'paused') overlay('一時停止', ['クリック / P で再開'], '#38b6ff');
-    else if (state === 'clear') overlay('STAGE CLEAR', [`ボーナス ${500 + lives * 100}`], '#3ddc97');
+    else if (state === 'clear') {
+      const allClear = (level + 1) % LEVELS.length === 0;
+      overlay(allClear ? 'ALL CLEAR!' : 'STAGE CLEAR',
+        [`ボーナス ${500 + lives * 100}`, allClear ? `${(level + 1) / LEVELS.length + 1}周目へ（さらに速く・かたく）` : ''],
+        allClear ? '#ffd23f' : '#3ddc97');
+    }
     else if (state === 'over') overlay('GAME OVER', [`スコア ${score}`, blink ? 'クリックでもう一度' : ''], '#ff5a4e');
   }
 
